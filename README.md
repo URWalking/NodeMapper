@@ -161,22 +161,6 @@ Location-Annotation-Tool/
 
 ***
 
-## Citation
-
-If you use NodeMapper in your research, please cite:
-
-```bibtex
-@software{nodemapper2025,
-  title   = {NodeMapper: Indoor Location Annotation Tool},
-  author  = {},
-  year    = {2025},
-  url     = {},
-  note    = {Part of the URWalking project}
-}
-```
-
-***
-
 ## License
 
 MIT — see [LICENSE](LICENSE) for details.
