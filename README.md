@@ -1,57 +1,55 @@
 # NodeMapper
 
-![Python](https://img.shields.io/badge/python-3.12-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
-![PyQt5](https://img.shields.io/badge/GUI-PyQt5-informational)
 
-A desktop GUI for manually annotating indoor location photos with nodes from a university navigation graph. Part of the **URWalking** project.
 
-![Screenshot](images/screenshot_tool.png)
 
----
 
-## Overview
 
-This tool is designed for researchers and students who need to create labeled training datasets for indoor navigation systems. Given a folder of photos taken at known locations inside a university building, users can interactively assign each photo to its corresponding node in the floor-plan graph by clicking on an interactive OpenStreetMap-based map.
 
-Annotations are saved as JSON and can be exported as CSV for downstream model training.
+> A desktop annotation tool for linking indoor location photos to university navigation graph nodes — part of the **URWalking** research project.
 
----
+
+
+***
+
+## Motivation
+
+Training reliable indoor navigation models requires high-quality labeled data. NodeMapper closes that gap: researchers and students load a folder of photos taken at known positions inside a university building and interactively assign each photo to its corresponding node in the floor-plan graph by clicking on a live OpenStreetMap-based map. The resulting annotations are exported as JSON or CSV and feed directly into downstream model training pipelines.
+
+***
 
 ## Features
 
-- **Interactive Leaflet map** with OpenStreetMap tiles and zoomable node markers
-- **Floor-plan overlay** — load building floor plans as georeferenced image overlays
-- **Per-floor filtering** — switch between buildings, floors, and node types
-- **EXIF timestamp extraction** from photo metadata
-- **Route builder** — compose and save node sequences as JSON routes
-- **Keyboard navigation** for fast photo-by-photo annotation
-- **CSV export** of all annotations
+| Feature | Description |
+|---|---|
+| 🗺️ Interactive map | Leaflet + OpenStreetMap tiles with zoomable, color-coded node markers |
+| 🏢 Floor-plan overlay | Georeferenced building plans rendered as image overlays |
+| 🔍 Per-floor filtering | Switch between buildings, floors, and node types |
+| 🕐 EXIF extraction | Automatic timestamp extraction from photo metadata |
+| 🛤️ Route builder | Compose and save node sequences as JSON walking routes |
+| ⌨️ Keyboard navigation | Arrow-key photo-by-photo annotation for speed |
+| 💾 CSV export | One-click export of all annotations |
 
----
+***
 
-## Requirements
+## Quickstart
+
+### Requirements
 
 - Python 3.12+
 - [`uv`](https://github.com/astral-sh/uv) (recommended) or `pip`
 
----
-
-## Installation
+### Installation
 
 ```bash
 # Clone the repository
 git clone <repo-url>
 cd Location-Annotation-Tool
 
-# Create and activate a virtual environment
+# Create virtual environment and install dependencies
 uv venv
 source .venv/bin/activate
-
-# Install dependencies from the pinned lockfile
 uv pip install -r requirements.txt
-
-# Install the project itself
 uv pip install -e .
 ```
 
@@ -63,22 +61,22 @@ python main.py
 uv run python main.py
 ```
 
-### Update dependencies
+### Update pinned dependencies
 
-After editing direct dependencies in `pyproject.toml`, regenerate the lockfile:
+After editing direct dependencies in `pyproject.toml`:
 
 ```bash
 uv pip compile pyproject.toml -o requirements.txt
 ```
 
----
+***
 
 ## Usage
 
-1. **Open a photo folder** via `File → Open Photo Folder` or `Ctrl+O`
-2. **Select a building and floor** in the top control bar
+1. **Open a photo folder** — `File → Open Photo Folder` or `Ctrl+O`
+2. **Select building and floor** in the top control bar
 3. **Click a node** on the map to assign the current photo to that location
-4. Optionally **load a floor-plan folder** to display georeferenced overlays
+4. *(Optional)* **Load a floor-plan folder** to display georeferenced overlays
 5. **Export annotations** as CSV via `Ctrl+S`
 
 ### Keyboard Shortcuts
@@ -93,9 +91,25 @@ uv pip compile pyproject.toml -o requirements.txt
 
 ### Route Builder
 
-Enable **Route Mode** to record sequences of nodes (e.g. walking paths). Routes can be saved as JSON and reloaded in later sessions.
+Enable **Route Mode** to record ordered node sequences (e.g. a walking path through a corridor). Routes are saved as JSON and can be reloaded in later sessions.
 
----
+***
+
+## Architecture
+
+```mermaid
+graph LR
+    Photos["📷 Photo Folder"] --> MW["MainWindow"]
+    GraphXML["🗂️ Graph XML"] --> UG["UniversityGraph"]
+    UG --> MW
+    MW --> MapWidget["MapWidget\n(Leaflet via PyQtWebEngine)"]
+    MW --> PhotoPanel["PhotoPanel"]
+    MapWidget -- node click --> AS["AnnotationStore"]
+    AS --> JSON["annotations.json"]
+    AS --> CSV["annotations.csv"]
+```
+
+***
 
 ## Project Structure
 
@@ -105,7 +119,7 @@ Location-Annotation-Tool/
 ├── pyproject.toml              # Project metadata and dependencies
 ├── requirements.txt            # Pinned dependency lockfile
 ├── .python-version             # Python 3.12
-├── images/                     # Screenshots and assets for documentation
+├── images/                     # Screenshots and documentation assets
 │
 └── src/
     ├── annotator/              # GUI application package
@@ -126,11 +140,11 @@ Location-Annotation-Tool/
     ├── graph/                  # Navigation graph data model
     │   └── university_graph.py # UniversityGraph — XML parser, node/edge DataFrames
     │
-    └── viz/                    # Visualization and analysis (Jupyter-compatible)
+    └── viz/                    # Visualization utilities (Jupyter-compatible)
         └── urwalking_viz.py    # BuildingGraph, UniversityMap — Plotly, Folium, pydeck
 ```
 
----
+***
 
 ## Dependencies
 
@@ -145,7 +159,23 @@ Location-Annotation-Tool/
 | plotly | 2D/3D visualizations (analysis) |
 | pydeck | 3D maps over OSM (analysis) |
 
----
+***
+
+## Citation
+
+If you use NodeMapper in your research, please cite:
+
+```bibtex
+@software{nodemapper2025,
+  title   = {NodeMapper: Indoor Location Annotation Tool},
+  author  = {},
+  year    = {2025},
+  url     = {},
+  note    = {Part of the URWalking project}
+}
+```
+
+***
 
 ## License
 
