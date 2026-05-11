@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <link rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+  <style>
+    html, body, #map {
+      margin: 0; padding: 0;
+      width: 100%; height: 100%;
+      background: #2b2d30;
+    }
+    .leaflet-tooltip {
+      font-family: monospace;
+      font-size: 11px;
+    }
+  </style>
+</head>
+<body>
+<div id="map"></div>
+<script>
+// ── Zustandsvariablen ──────────────────────────────────────────────────────
+var map, bridge;
+var routeMode   = false;
+var routeNodes  = [];   // [[lat,lon], ...]
+var routeKeys   = [];   // node_key-Strings in Reihenfolge
+var routeLine   = null;
+var overlay     = null;
+var markers     = {};   // node_key -> L.circleMarker
+var edgeLines   = [];   // L.polyline[]
+var selectedKey = null;
+
+function currentRadius() {
+  if (!map) return 6;
+  return Math.max(4, Math.min(12, map.getZoom() - 13));
+}
+
+var TYPE_COLORS = "__TYPE_COLORS__";
+
+function getColor(type) {
+  return TYPE_COLORS[type] || "__DEFAULT_COLOR__";
+}
+
+// ── Overlay-Transparenz anpassen ───────────────────────────────────────────
+function setOverlayOpacity(v) {
+  if (overlay) overlay.setOpacity(v);
+}
+
+// ── Karte initialisieren ───────────────────────────────────────────────────
+function initMap() {
+  map = L.map('map', {preferCanvas: true});
+  L.tileLayer(
+    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxZoom: 22,
+      maxNativeZoom: 19
+    }
+  ).addTo(map);
+
+  // Zoom-abhängige Marker-Größe
+  map.on('zoomend', function() {
+    var r = currentRadius();
+    for (var k in markers) { markers[k].setRadius(r); }
+    // Selektierter Marker bleibt etwas größer
+    if (selectedKey && markers[selectedKey]) {
+      markers[selectedKey].setRadius(Math.max(r, 8));
+    }
+  });
+
+  // Standardansicht: Universität Regensburg
+  map.setView([49.001, 12.093], 16);
+}
+
+// ── Knoten + Overlay laden ─────────────────────────────────────────────────
+function loadMap(nodes, edges, overlayUrl, bounds, overlayOpacity) {
+  // Alte Marker entfernen
+  for (var k in markers) { markers[k].remove(); }
+  markers = {};
+  selectedKey = null;
+
+  // Alte Kanten-Polylines entfernen
+  edgeLines.forEach(function(l) { l.remove(); });
+  edgeLines = [];
+
+  // Overlay entfernen
+  if (overlay) { overlay.remove(); overlay = null; }
+
+  // Alte Route-Linie entfernen (Marker-Farben werden beim loadMap zurückgesetzt)
+  if (routeLine) { routeLine.remove(); routeLine = null; }
+  routeNodes = []; routeKeys = [];
+
+  // Grundriss-Overlay einblenden
+  var hasOverlay = !!(overlayUrl && bounds && bounds.length === 2);
+  var initOpacity = (overlayOpacity != null) ? overlayOpacity : 0.65;
+  if (hasOverlay) {
+    overlay = L.imageOverlay(overlayUrl, bounds, {
+      opacity: initOpacity,
+      interactive: false
+    }).addTo(map);
+    map.fitBounds(bounds, {padding: [20, 20], maxZoom: 21});
+  }
+
+  // Kanten als Polylines (hinter den Markern, daher zuerst)
+  var nodeLatLon = {};
+  nodes.forEach(function(n) {
+    if (n.lat != null && n.lon != null) nodeLatLon[n.key] = [n.lat, n.lon];
+  });
+  (edges || []).forEach(function(e) {
+    var a = nodeLatLon[e.src], b = nodeLatLon[e.dst];
+    if (a && b) {
+      edgeLines.push(
+        L.polyline([a, b], {color: '#888', weight: 1.5, opacity: 0.45, interactive: false}).addTo(map)
+      );
+    }
+  });
+
+  // Knoten-Marker
+  var latlngs = [];
+  var r = currentRadius();
+  nodes.forEach(function(node) {
+    if (node.lat == null || node.lon == null) return;
+    var color = getColor(node.type);
+    var borderColor = node.annotated ? '#a9e34b' : '#ffffff';
+    var borderWeight = node.annotated ? 2.5 : 1;
+
+    var marker = L.circleMarker([node.lat, node.lon], {
+      radius: r,
+      fillColor: color,
+      color: borderColor,
+      weight: borderWeight,
+      fillOpacity: 0.9
+    }).addTo(map);
+
+    marker._origColor       = color;
+    marker._origBorder      = borderColor;
+    marker._origBorderWeight = borderWeight;
+    marker._nodeKey         = node.key;
+
+    var pixelInfo = (node.px != null && node.py != null)
+      ? '<br><span style="color:#aaa">Pixel: (' + Math.round(node.px) + ', ' + Math.round(node.py) + ')</span>'
+      : '';
+    var tooltipText =
+      '<b>' + node.key + '</b><br>' +
+      (node.name || '') + (node.type ? ' (' + node.type + ')' : '') +
+      pixelInfo;
+    marker.bindTooltip(tooltipText, {sticky: true});
+
+    // Klick-Handler
+    (function(n) {
+      marker.on('click', function(e) {
+        L.DomEvent.stopPropagation(e);
+        if (routeMode) {
+          addToRoute(n.key, n.lat, n.lon);
+        } else {
+          if (bridge) bridge.nodeClicked(n.key);
+        }
+      });
+    })(node);
+
+    markers[node.key] = marker;
+    latlngs.push([node.lat, node.lon]);
+  });
+
+  // Karte auf Knoten zoomen, wenn kein Overlay vorhanden
+  if (!hasOverlay && latlngs.length > 0) {
+    map.fitBounds(latlngs, {padding: [30, 30]});
+  }
+}
+
+// ── Knoten hervorheben ─────────────────────────────────────────────────────
+function selectNode(key) {
+  // Vorherige Auswahl zurücksetzen (sofern nicht Route-Knoten)
+  if (selectedKey && markers[selectedKey]) {
+    var prev = markers[selectedKey];
+    var prevIsRoute = routeKeys.indexOf(selectedKey) !== -1;
+    prev.setStyle({
+      fillColor: prevIsRoute ? '#ff4444' : prev._origColor,
+      color:     prevIsRoute ? '#c92a2a' : (prev._origBorder || '#ffffff'),
+      weight:    prevIsRoute ? 2         : (prev._origBorderWeight || 1)
+    });
+    prev.setRadius(currentRadius());
+  }
+
+  selectedKey = key || null;
+
+  if (key && markers[key]) {
+    markers[key].setStyle({
+      fillColor: '#ffe066',
+      color:     '#e67700',
+      weight:    3
+    });
+    markers[key].setRadius(Math.max(currentRadius(), 8));
+    markers[key].bringToFront();
+  }
+}
+
+// ── Routen-Builder ─────────────────────────────────────────────────────────
+function addToRoute(key, lat, lon) {
+  // Doppelklicks auf denselben Knoten ignorieren
+  if (routeKeys.length > 0 && routeKeys[routeKeys.length - 1] === key) return;
+
+  routeKeys.push(key);
+  routeNodes.push([lat, lon]);
+
+  // Polyline aktualisieren
+  if (routeLine) routeLine.remove();
+  if (routeNodes.length > 1) {
+    routeLine = L.polyline(routeNodes, {
+      color:  '#ff6b6b',
+      weight: 3,
+      opacity: 0.85
+    }).addTo(map);
+  }
+
+  // Marker rot einfärben
+  if (markers[key]) {
+    markers[key].setStyle({
+      fillColor: '#ff4444',
+      color:     '#c92a2a',
+      weight:    2
+    });
+    markers[key].bringToFront();
+  }
+
+  if (bridge) bridge.routeNodeAdded(key);
+}
+
+function setRouteMode(on) {
+  routeMode = on;
+}
+
+function clearRoute() {
+  // Farben der Route-Marker zurücksetzen
+  routeKeys.forEach(function(key) {
+    if (markers[key] && key !== selectedKey) {
+      markers[key].setStyle({
+        fillColor: markers[key]._origColor,
+        color:     '#ffffff',
+        weight:    1
+      });
+    }
+  });
+  routeNodes = []; routeKeys = [];
+  if (routeLine) { routeLine.remove(); routeLine = null; }
+}
+
+function getRoute() {
+  return JSON.stringify(routeKeys);
+}
+
+// ── Route wiederherstellen ─────────────────────────────────────────────────
+function restoreRoute(keys) {
+  routeKeys = [];
+  routeNodes = [];
+  if (routeLine) { routeLine.remove(); routeLine = null; }
+
+  keys.forEach(function(key) {
+    if (!markers[key]) return;
+    var latlng = markers[key].getLatLng();
+    routeKeys.push(key);
+    routeNodes.push([latlng.lat, latlng.lng]);
+    markers[key].setStyle({ fillColor: '#ff4444', color: '#c92a2a', weight: 2 });
+    markers[key].bringToFront();
+  });
+
+  if (routeNodes.length > 1) {
+    routeLine = L.polyline(routeNodes, {
+      color: '#ff6b6b', weight: 3, opacity: 0.85
+    }).addTo(map);
+  }
+}
+
+// ── Initialisierung: warten bis Leaflet geladen ────────────────────────────
+function waitForLeaflet(tries) {
+  tries = tries || 0;
+  if (typeof L !== 'undefined' && typeof QWebChannel !== 'undefined') {
+    initMap();
+    new QWebChannel(qt.webChannelTransport, function(ch) {
+      bridge = ch.objects.bridge;
+      bridge.mapReady();   // Python informieren
+    });
+    return;
+  }
+  if (tries > 100) {
+    console.error('Leaflet oder QWebChannel konnte nicht geladen werden.');
+    return;
+  }
+  setTimeout(function() { waitForLeaflet(tries + 1); }, 100);
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  waitForLeaflet();
+});
+</script>
+</body>
+</html>
