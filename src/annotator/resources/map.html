@@ -72,6 +72,18 @@ function initMap() {
 
   // Standardansicht: Universität Regensburg
   map.setView([49.001, 12.093], 16);
+
+  // Tastatur-Zoom: + / = zoom in, - zoom out (auch auf Numpad)
+  document.addEventListener('keydown', function(e) {
+    if (!map) return;
+    var tag = (e.target || e.srcElement).tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    if (e.key === '+' || e.key === '=' || e.key === 'Add') {
+      map.zoomIn();
+    } else if (e.key === '-' || e.key === 'Subtract') {
+      map.zoomOut();
+    }
+  });
 }
 
 // ── Knoten + Overlay laden ─────────────────────────────────────────────────
@@ -198,30 +210,44 @@ function selectNode(key) {
 
 // ── Routen-Builder ─────────────────────────────────────────────────────────
 function addToRoute(key, lat, lon) {
-  // Doppelklicks auf denselben Knoten ignorieren
-  if (routeKeys.length > 0 && routeKeys[routeKeys.length - 1] === key) return;
+  var idx = routeKeys.indexOf(key);
 
-  routeKeys.push(key);
-  routeNodes.push([lat, lon]);
+  if (idx !== -1) {
+    // Knoten bereits in Route → entfernen
+    routeKeys.splice(idx, 1);
+    routeNodes.splice(idx, 1);
+
+    if (markers[key]) {
+      markers[key].setStyle({
+        fillColor: markers[key]._origColor,
+        color:     markers[key]._origBorder || '#ffffff',
+        weight:    markers[key]._origBorderWeight || 1
+      });
+    }
+  } else {
+    // Knoten hinzufügen
+    routeKeys.push(key);
+    routeNodes.push([lat, lon]);
+
+    if (markers[key]) {
+      markers[key].setStyle({
+        fillColor: '#ff4444',
+        color:     '#c92a2a',
+        weight:    2
+      });
+      markers[key].bringToFront();
+    }
+  }
 
   // Polyline aktualisieren
   if (routeLine) routeLine.remove();
+  routeLine = null;
   if (routeNodes.length > 1) {
     routeLine = L.polyline(routeNodes, {
       color:  '#ff6b6b',
       weight: 3,
       opacity: 0.85
     }).addTo(map);
-  }
-
-  // Marker rot einfärben
-  if (markers[key]) {
-    markers[key].setStyle({
-      fillColor: '#ff4444',
-      color:     '#c92a2a',
-      weight:    2
-    });
-    markers[key].bringToFront();
   }
 
   if (bridge) bridge.routeNodeAdded(key);
