@@ -54,6 +54,7 @@ class MainWindow(QMainWindow):
         self._current_bounds: list | None = None
         self._block_floor_signals: bool = False
         self._route_keys: list[str] = []
+        self._route_node_data: list[dict] = []  # [{key, lat, lon}, ...]
 
         self.statusBar().showMessage("Loading university graph …")
         QApplication.processEvents()
@@ -530,8 +531,8 @@ class MainWindow(QMainWindow):
             self._current_bounds,
             opacity,
         )
-        if self._route_keys:
-            self._map_widget.restore_route(self._route_keys)
+        if self._route_node_data:
+            self._map_widget.restore_route(self._route_node_data)
 
     def _rehighlight_current(self) -> None:
         if not self._photo_paths:
@@ -717,6 +718,20 @@ class MainWindow(QMainWindow):
             self._lbl_route_count.setStyleSheet("color: #aaa; font-size: 11px;")
             self.statusBar().showMessage("Route mode disabled", 2000)
 
+    def _build_route_node_data(self, keys: list[str]) -> list[dict]:
+        """Schlägt Lat/Lon für jeden Route-Knoten im Graph nach."""
+        nodes_df = self._graph.nodes_df
+        result = []
+        for key in keys:
+            row = nodes_df[nodes_df["node_key"] == key]
+            if not row.empty:
+                r = row.iloc[0]
+                lat = r["geo_lat"]
+                lon = r["geo_lon"]
+                if lat is not None and lon is not None:
+                    result.append({"key": key, "lat": float(lat), "lon": float(lon)})
+        return result
+
     def _on_route_node_added(self, node_key: str) -> None:
         """Updates the node counter in the route bar."""
         def _update_count(keys_json):
@@ -725,12 +740,14 @@ class MainWindow(QMainWindow):
             except Exception:
                 keys = []
             self._route_keys = keys
+            self._route_node_data = self._build_route_node_data(keys)
             self._lbl_route_count.setText(f"{len(keys)} nodes in route")
         self._map_widget.page().runJavaScript("getRoute();", _update_count)
         self.statusBar().showMessage(f"Route: added {node_key}", 1500)
 
     def _clear_route(self) -> None:
         self._route_keys = []
+        self._route_node_data = []
         self._map_widget.clear_route()
         self._lbl_route_count.setText("0 nodes in route")
 
@@ -770,7 +787,8 @@ class MainWindow(QMainWindow):
             self._btn_route_mode.setChecked(True)
 
         self._route_keys = keys
-        self._map_widget.restore_route(keys)
+        self._route_node_data = self._build_route_node_data(keys)
+        self._map_widget.restore_route(self._route_node_data)
         self._lbl_route_count.setText(f"{len(keys)} nodes in route")
         self.statusBar().showMessage(
             f"Route loaded: {len(keys)} nodes from {path}", 4000

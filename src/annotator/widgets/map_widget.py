@@ -80,9 +80,9 @@ class MapWidget(QWebEngineView):
     def clear_route(self) -> None:
         self.page().runJavaScript("clearRoute();")
 
-    def restore_route(self, keys: list[str]) -> None:
-        """Stellt eine gespeicherte Route anhand von Node-Keys wieder her."""
-        self.page().runJavaScript(f"restoreRoute({json.dumps(keys)});")
+    def restore_route(self, nodes: list[dict]) -> None:
+        """Stellt eine gespeicherte Route anhand von Node-Daten wieder her."""
+        self.page().runJavaScript(f"restoreRoute({json.dumps(nodes)});")
 
     def get_route(self, callback) -> None:
         """Ruft callback(list[node_key]) asynchron auf."""

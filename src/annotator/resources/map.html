@@ -88,9 +88,8 @@ function loadMap(nodes, edges, overlayUrl, bounds, overlayOpacity) {
   // Overlay entfernen
   if (overlay) { overlay.remove(); overlay = null; }
 
-  // Alte Route-Linie entfernen (Marker-Farben werden beim loadMap zurückgesetzt)
+  // Alte Route-Linie entfernen — Daten werden via restoreRoute wiederhergestellt
   if (routeLine) { routeLine.remove(); routeLine = null; }
-  routeNodes = []; routeKeys = [];
 
   // Grundriss-Overlay einblenden
   var hasOverlay = !!(overlayUrl && bounds && bounds.length === 2);
@@ -252,18 +251,19 @@ function getRoute() {
 }
 
 // ── Route wiederherstellen ─────────────────────────────────────────────────
-function restoreRoute(keys) {
+function restoreRoute(nodes) {
   routeKeys = [];
   routeNodes = [];
   if (routeLine) { routeLine.remove(); routeLine = null; }
 
-  keys.forEach(function(key) {
-    if (!markers[key]) return;
-    var latlng = markers[key].getLatLng();
-    routeKeys.push(key);
-    routeNodes.push([latlng.lat, latlng.lng]);
-    markers[key].setStyle({ fillColor: '#ff4444', color: '#c92a2a', weight: 2 });
-    markers[key].bringToFront();
+  nodes.forEach(function(n) {
+    routeKeys.push(n.key);
+    routeNodes.push([n.lat, n.lon]);
+    // Nur Marker der aktuellen Etage einfärben
+    if (markers[n.key]) {
+      markers[n.key].setStyle({ fillColor: '#ff4444', color: '#c92a2a', weight: 2 });
+      markers[n.key].bringToFront();
+    }
   });
 
   if (routeNodes.length > 1) {
