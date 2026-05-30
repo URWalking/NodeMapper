@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import io
 import os
 
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QPixmap
+from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtWidgets import QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from annotator.utils.exif import extract_timestamp
@@ -64,7 +65,7 @@ class PhotoPanel(QWidget):
         layout.addStretch()
 
     def load_photo(self, image_path: str) -> str | None:
-        pixmap = QPixmap(image_path)
+        pixmap = self._load_pixmap_with_orientation(image_path)
         if not pixmap.isNull():
             scaled = pixmap.scaled(
                 self.lbl_image.width() or 340,
@@ -88,6 +89,21 @@ class PhotoPanel(QWidget):
             self.lbl_timestamp.setStyleSheet("color: #aaa;")
 
         return ts
+
+    @staticmethod
+    def _load_pixmap_with_orientation(image_path: str) -> QPixmap:
+        """Load image and apply EXIF orientation so iPhone photos display correctly."""
+        try:
+            from PIL import Image, ImageOps
+            with Image.open(image_path) as pil_img:
+                pil_img = ImageOps.exif_transpose(pil_img)
+                pil_img = pil_img.convert("RGB")
+                buf = io.BytesIO()
+                pil_img.save(buf, format="JPEG", quality=95)
+            qimage = QImage.fromData(buf.getvalue())
+            return QPixmap.fromImage(qimage)
+        except Exception:
+            return QPixmap(image_path)
 
     def show_assignment(
         self,
